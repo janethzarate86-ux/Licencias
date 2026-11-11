@@ -33,7 +33,7 @@ dialog{border:none;border-radius:24px;width:min(650px,94vw);padding:0;box-shadow
 <main class="wrap">
 <section class="card">
   <div class="toolbar">
-    <div class="searchbox"><span>🔎</span><input id="search" placeholder="Buscar cliente, sucursal o Device ID" autocomplete="off"/></div>
+    <div class="searchbox" id="searchWrap"><span>🔎</span><input id="search" placeholder="Buscar cliente, sucursal o Device ID" autocomplete="off" aria-autocomplete="list" aria-expanded="false" aria-controls="searchSuggestions"/><div id="searchSuggestions" class="clientSuggestions hidden" role="listbox" aria-label="Clientes registrados"></div></div>
     <button id="add" class="green" title="Nuevo cliente o licencia" aria-label="Nueva licencia"><span>＋</span></button>
     <button id="refresh" class="secondary" title="Refrescar"><span>🔄</span> <span class="btnText">Refrescar</span></button>
   </div>
@@ -120,6 +120,15 @@ function status(lic){const now=new Date();const exp=lic.expiresAt?new Date(lic.e
 function recalc(){cache.forEach(l=>{const s=status(l);l.status=s[0];l.days=s[1];l.cliente=clienteOf(l)})}
 function searchable(l){return [clienteOf(l),l.sucursal,l.deviceId,l.plan,l.key,l.status].join(' ').toUpperCase()}
 function currentFilter(){return normalizeText($('search').value)}
+function hideSearchSuggestions(){const list=$('searchSuggestions');list.replaceChildren();list.classList.add('hidden');$('search').setAttribute('aria-expanded','false')}
+function chooseSearchSuggestion(name){$('search').value=name;hideSearchSuggestions();setTab('clients');render();$('search').focus()}
+function showSearchSuggestions(){const q=currentFilter();if(!q){hideSearchSuggestions();return}
+const names=[...new Set(cache.filter(l=>!['ELIMINADA','PENDIENTE'].includes(status(l)[0])).map(clienteOf).filter(name=>name&&name!=='SIN CLIENTE'))].sort((a,b)=>a.localeCompare(b,'es'));
+const matches=names.filter(name=>name.includes(q)).slice(0,10);
+if(!matches.length){hideSearchSuggestions();return}
+const list=$('searchSuggestions');list.replaceChildren();
+for(const name of matches){const option=document.createElement('button');option.type='button';option.className='clientSuggestion';option.setAttribute('role','option');option.textContent=name;option.addEventListener('click',()=>chooseSearchSuggestion(name));option.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();hideSearchSuggestions();$('search').focus()}if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();const items=[...list.querySelectorAll('button')];const i=items.indexOf(option);const next=items[i+(e.key==='ArrowDown'?1:-1)];if(next)next.focus();else $('search').focus()}});list.appendChild(option)}
+list.classList.remove('hidden');$('search').setAttribute('aria-expanded','true')}
 function filteredLicenses(){const q=currentFilter();return q?cache.filter(l=>searchable(l).includes(q)):cache}
 function activeLicenses(rows){return rows.filter(l=>l.status==='ACTIVA'||l.status==='SIN FECHA')}
 function longTermArchived(l){if(status(l)[0]!=='ACTIVA')return false;const expiry=new Date(l.expiresAt||'');return !isNaN(expiry.getTime())&&expiry.getTime()>addYears(new Date(),5).getTime()}
@@ -171,7 +180,10 @@ document.addEventListener('pointerdown',e=>{if(!e.target.closest('#clientSuggest
 $('modal').addEventListener('close',hideClientSuggestions);
 $('mSucursal').addEventListener('blur',()=>{$('mSucursal').value=stripSucursalPrefix($('mSucursal').value)});
 $('mPlan').addEventListener('change',()=>{$('mExpires').value=iso(planExpiration(new Date(),$('mPlan').value))});
-$('search').addEventListener('input',()=>{render();});
+$('search').addEventListener('input',()=>{render();showSearchSuggestions()});
+$('search').addEventListener('focus',()=>{if(currentFilter())showSearchSuggestions()});
+$('search').addEventListener('keydown',e=>{if(e.key==='Escape')hideSearchSuggestions();if(e.key==='ArrowDown'&&!$('searchSuggestions').classList.contains('hidden')){e.preventDefault();$('searchSuggestions').querySelector('button')?.focus()}});
+document.addEventListener('pointerdown',e=>{if(!e.target.closest('#searchWrap'))hideSearchSuggestions()});
 $('auth').onclick=configureAdminAccess;$('refresh').onclick=refresh;$('add').onclick=()=>openNew();$('cancel').onclick=()=>$('modal').close();$('save').onclick=saveFromModal;$('delete').onclick=deleteCurrent;$('clearHistory').onclick=clearAllHistory;$('tabClients').onclick=()=>setTab('clients');$('tabArchive').onclick=()=>setTab('archive');$('tabHistory').onclick=()=>setTab('history');
 refresh();
 })();
